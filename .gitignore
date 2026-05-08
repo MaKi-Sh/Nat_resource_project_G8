@@ -1,0 +1,72 @@
+# Image / output formats
+*.ppm
+*.pgm
+*.pbm
+*.pnm
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.tif
+*.tiff
+*.webp
+
+# Video / audio
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+*.mp3
+*.wav
+*.flac
+
+# Archives
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.tar.bz2
+*.tar.xz
+*.7z
+*.rar
+
+# Compiled / binary artifacts
+*.o
+*.obj
+*.a
+*.so
+*.dll
+*.dylib
+*.exe
+*.out
+a.out
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
+env/
+
+# Data / large blobs
+*.bin
+*.dat
+*.iso
+*.img
+*.dump
+
+# Editor / OS junk
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Outputs directory contents (keep the folder via .gitkeep if desired)
+Outputs/*
+!Outputs/.gitkeep
