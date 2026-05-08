@@ -1,0 +1,27 @@
+0. Server Setup (Manager Node)
+Install the NFS Kernel Server: Update and install the necessary package:
+sudo apt update
+sudo apt install nfs-kernel-server -y
+
+Create the Shared Directory: Create the folder you want to share and set permissions:
+sudo mkdir -p /var/nfs/general
+sudo chown nobody:nogroup /var/nfs/general
+sudo chmod 777 /var/nfs/general
+
+Configure Exports: Edit /etc/exports to allow clients access:
+sudo nano /etc/exports
+Add a line to share with your cluster, replacing IPs:
+text/var/nfs/general 192.168.1.0/24(rw,sync,no_subtree_check,no_root_squash)
+
+Export the Share: Restart the service:
+sudo exportfs -ra
+sudo systemctl restart nfs-kernel-server
+
+2. Client Setup (Compute Nodes)
+Perform these steps on all other nodes in the cluster.
+Install NFS Common:
+sudo apt update
+sudo apt install nfs-common -y
+Create Mount Point: sudo mkdir -p /mnt/nfs
+Mount the Share: sudo mount <server_ip>:/var/nfs/general /mnt/nfs
+Verify Setup: Check if the share is visible: df -h
