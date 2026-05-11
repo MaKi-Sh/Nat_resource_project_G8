@@ -2,7 +2,11 @@
 printf "This is the setup config for a Heterogenous Beowulf cluster for host server \n"
 printf "Here are the steps that we will take for setting up this server \n 1. Presetup \n 2. Shared File System \n 3. SSH setup \n 4. OpenMPI setup \n 5. Test run\n"
 printf "Presetup \n 1. Package updates \n 2. User Creation\n"
-read -p "Computer type (Master/Worker/NFS): " computer 
+read -p "Computer type (Master/Worker/NFS): " computer
+if [ "$computer" = "Master" ]; then
+	read -p "Is computer also NFS (Y/n): " is_main_NFS
+fi
+
 
 COMPOSTYPE=$(case "$OSTYPE" in
 	darwin*)  echo "macOS";;
@@ -107,13 +111,13 @@ if [ ! -f "openmpi-${OMPI_VERSION}.tar.gz" ]; then
 	wget "https://download.open-mpi.org/release/open-mpi/v5.0/openmpi-${OMPI_VERSION}.tar.gz"
 fi
 
-tar -xzf "openmpi-${OMPI_VERSION}.tar.gz"
+tar -xzf "openmpi-${OMPI_VERSION}.tar.gz" || exit 1
 cd "openmpi-${OMPI_VERSION}" || exit 1
 
 JOBS=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)
-./configure --prefix="$OMPI_PREFIX"
-make -j"$JOBS"
-sudo make install
+./configure --prefix="$OMPI_PREFIX" || exit 1
+make -j"$JOBS" || exit 1
+sudo make install || exit 1
 
 if command -v ldconfig >/dev/null 2>&1; then
 	sudo ldconfig
@@ -161,7 +165,7 @@ elif [ "$COMPOSTYPE" = "macOS" ]; then
 elif [ "$COMPOSTYPE" = "Windows" ]; then
 	# msys2 / cygwin path — invoke Windows native rename
 	powershell.exe -Command "Rename-Computer -NewName '$device_name' -Force" || \
-		wmic computersystem where name="%COMPUTERNAME%" call rename name="$device_name"
+		cmd.exe /c "wmic computersystem where name=\"%COMPUTERNAME%\" call rename name=\"$device_name\""
 	echo "Reboot required for hostname change to fully apply on Windows."
 fi
 echo "Hostname set to: $device_name"
@@ -170,28 +174,18 @@ echo "Hostname set to: $device_name"
 # 4. User creation — lower-level per OS/distro
 # Default is 'mpiuser' and MUST be identical across master + all workers.
 # ---------------------------------------------------------------------------
-echo "Creating new user, default is mpiuser and must be constant across master and all worker nodes..."
+echo "Creating new user, name is mpiuser"
 username="mpiuser"
-read -p "Desired constant username [default: mpiuser]: " input_username
-username="${input_username:-$username}"
-while id "$username" >/dev/null 2>&1; do
-	read -p "Username '$username' already exists, please choose a different username: " input_username
-	if [ -z "$input_username" ]; then
-		echo "A new username is required."
-		continue
-	fi
-	username="$input_username"
-done
 
 if [ "$COMPOSTYPE" = "Linux" ]; then
 	case "$distro" in
 		alpine)
-				# Alpine ships BusyBox adduser (different flags than shadow-utils)
+			# Alpine ships BusyBox adduser (different flags than shadow-utils)
 			sudo adduser -D -s /bin/sh "$username"
 			sudo passwd "$username"
 			;;
 		*)
-				# useradd is the low-level shadow-utils command — present on
+			# useradd is the low-level shadow-utils command — present on
 			# debian/ubuntu/arch/fedora/rhel/suse/void/gentoo/slackware.
 			sudo useradd -m -s /bin/bash -U "$username"
 			sudo passwd "$username"
@@ -229,8 +223,6 @@ echo "Password created is equivalent to username if needed"
 # 5. Shared File System (NFS) — server or client setup, cross-OS / cross-distro
 # ---------------------------------------------------------------------------
 printf "Shared File System\n 1. NFS master (server) setup\n 2. NFS client setup\n"
-read -p "Is this main computer the NFS server [Y/N]: " is_main_NFS
-is_main_NFS="$(echo "$is_main_NFS" | tr '[:lower:]' '[:upper:]')"
 
 # Install NFS server package(s) per distro / OS
 install_nfs_server() {
@@ -306,7 +298,7 @@ nobody_group() {
 	echo "nobody"
 }
 
-if [ "$computer" = "NFS" ] || [ "$is_main_NFS" = "Y" ]; then
+if [ "$computer" = "NFS" ] || [[ "$is_main_NFS" =~ ^[Yy]$ ]]; then
 	install_nfs_server
 
 	read -p "Please input path to server NFS directory: " NFSPATH
@@ -451,7 +443,7 @@ start_ssh_server
 
 # Resolve home directory for $username (cross-OS)
 if [ "$COMPOSTYPE" = "macOS" ]; then
-	USER_HOME=$(dscl . -read "/Users/$username" NFSHomeDirectory 2>/dev/null | awk '{print $2}')
+	USER_HOME=$(dscl . -read "/Users/$username" NFSHomeDirectory 2>/dev/null | awk -F': ' '{print $2}')
 elif command -v getent >/dev/null 2>&1; then
 	USER_HOME=$(getent passwd "$username" | cut -d: -f6)
 fi
