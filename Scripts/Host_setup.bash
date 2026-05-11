@@ -26,6 +26,22 @@ if [ "$COMPOSTYPE" = "Linux" ]; then
 	echo "Detected Distro: $distro"
 fi
 
+# ---------------------------------------------------------------------------
+# Optional: skip "recommended"/weak-dependency packages for a faster install.
+# Applies to apt (--no-install-recommends), dnf (--setopt=install_weak_deps=False),
+# zypper (--no-recommends). Other package managers don't have a direct equivalent.
+# ---------------------------------------------------------------------------
+APT_FLAGS=""
+DNF_FLAGS=""
+ZYPPER_FLAGS=""
+read -p "Skip recommended/weak packages for faster install? (y/N): " skip_recommends
+if [[ "$skip_recommends" =~ ^[Yy]$ ]]; then
+	APT_FLAGS="--no-install-recommends"
+	DNF_FLAGS="--setopt=install_weak_deps=False"
+	ZYPPER_FLAGS="--no-recommends"
+	echo "Skipping weak/recommended deps where supported."
+fi
+
 OMPI_VERSION=5.0.7
 OMPI_PREFIX=/usr/local
 BUILD_DIR=/tmp/ompi-build
@@ -37,7 +53,7 @@ if [ "$COMPOSTYPE" = "Linux" ]; then
 	case "$distro" in
 		debian|ubuntu|linuxmint|mx|kali|antix|pop|elementary|raspbian|devuan)
 			sudo apt update
-			sudo apt install -y nfs-common build-essential gcc g++ gfortran \
+			sudo apt install -y $APT_FLAGS nfs-common build-essential gcc g++ gfortran \
 				make wget tar perl m4 autoconf automake libtool flex
 			;;
 		arch|manjaro|endeavouros|artix|garuda)
@@ -46,13 +62,13 @@ if [ "$COMPOSTYPE" = "Linux" ]; then
 				gcc-fortran make wget tar perl m4 autoconf automake libtool flex
 			;;
 		fedora|rhel|centos|rocky|almalinux|ol|amzn)
-			sudo dnf install -y nfs-utils gcc gcc-c++ gcc-gfortran make wget \
+			sudo dnf install -y $DNF_FLAGS nfs-utils gcc gcc-c++ gcc-gfortran make wget \
 				tar perl m4 autoconf automake libtool flex
 			sudo dnf groupinstall -y "Development Tools"
 			;;
 		opensuse|opensuse-leap|opensuse-tumbleweed|sles|suse)
 			sudo zypper refresh
-			sudo zypper install -y nfs-client gcc gcc-c++ gcc-fortran make \
+			sudo zypper install -y $ZYPPER_FLAGS nfs-client gcc gcc-c++ gcc-fortran make \
 				wget tar perl m4 autoconf automake libtool flex
 			sudo zypper install -y -t pattern devel_basis
 			;;
@@ -229,13 +245,13 @@ install_nfs_server() {
 	if [ "$COMPOSTYPE" = "Linux" ]; then
 		case "$distro" in
 			debian|ubuntu|linuxmint|mx|kali|antix|pop|elementary|raspbian|devuan)
-				sudo apt install -y nfs-kernel-server ;;
+				sudo apt install -y $APT_FLAGS nfs-kernel-server ;;
 			arch|manjaro|endeavouros|artix|garuda)
 				sudo pacman -S --noconfirm --needed nfs-utils ;;
 			fedora|rhel|centos|rocky|almalinux|ol|amzn)
-				sudo dnf install -y nfs-utils ;;
+				sudo dnf install -y $DNF_FLAGS nfs-utils ;;
 			opensuse|opensuse-leap|opensuse-tumbleweed|sles|suse)
-				sudo zypper install -y nfs-kernel-server ;;
+				sudo zypper install -y $ZYPPER_FLAGS nfs-kernel-server ;;
 			alpine)
 				sudo apk add nfs-utils ;;
 			gentoo)
@@ -380,13 +396,13 @@ install_ssh_server() {
 	if [ "$COMPOSTYPE" = "Linux" ]; then
 		case "$distro" in
 			debian|ubuntu|linuxmint|mx|kali|antix|pop|elementary|raspbian|devuan)
-				sudo apt install -y openssh-server openssh-client ;;
+				sudo apt install -y $APT_FLAGS openssh-server openssh-client ;;
 			arch|manjaro|endeavouros|artix|garuda)
 				sudo pacman -S --noconfirm --needed openssh ;;
 			fedora|rhel|centos|rocky|almalinux|ol|amzn)
-				sudo dnf install -y openssh-server openssh-clients ;;
+				sudo dnf install -y $DNF_FLAGS openssh-server openssh-clients ;;
 			opensuse|opensuse-leap|opensuse-tumbleweed|sles|suse)
-				sudo zypper install -y openssh ;;
+				sudo zypper install -y $ZYPPER_FLAGS openssh ;;
 			alpine)
 				sudo apk add openssh openssh-client ;;
 			gentoo)
@@ -502,13 +518,13 @@ ensure_git() {
 	if [ "$COMPOSTYPE" = "Linux" ]; then
 		case "$distro" in
 			debian|ubuntu|linuxmint|mx|kali|antix|pop|elementary|raspbian|devuan)
-				sudo apt install -y git ;;
+				sudo apt install -y $APT_FLAGS git ;;
 			arch|manjaro|endeavouros|artix|garuda)
 				sudo pacman -S --noconfirm --needed git ;;
 			fedora|rhel|centos|rocky|almalinux|ol|amzn)
-				sudo dnf install -y git ;;
+				sudo dnf install -y $DNF_FLAGS git ;;
 			opensuse|opensuse-leap|opensuse-tumbleweed|sles|suse)
-				sudo zypper install -y git ;;
+				sudo zypper install -y $ZYPPER_FLAGS git ;;
 			alpine)
 				sudo apk add git ;;
 			gentoo)
