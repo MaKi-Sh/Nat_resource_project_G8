@@ -454,8 +454,59 @@ start_ssh_server() {
 	# macOS: already enabled via systemsetup above.
 }
 
+# Make sure sshd will accept a password long enough for the master to push its
+# key via ssh-copy-id. Many distros (Arch, Fedora, RHEL, Ubuntu 22.04+) default
+# to PasswordAuthentication=no — either in sshd_config or a drop-in under
+# sshd_config.d/ — which causes "Permission denied (publickey)" before the key
+# is installed. Flip both PasswordAuthentication and KbdInteractiveAuthentication
+# to yes here; you can switch them back to 'no' after the cluster is set up.
+enable_password_auth() {
+	if [ "$COMPOSTYPE" = "Linux" ] || [ "$COMPOSTYPE" = "macOS" ]; then
+		SSHD_CONFIG="/etc/ssh/sshd_config"
+		if sudo test -f "$SSHD_CONFIG"; then
+			sudo sed -i -E 's/^[#[:space:]]*PasswordAuthentication[[:space:]]+.*/PasswordAuthentication yes/' "$SSHD_CONFIG"
+			sudo sed -i -E 's/^[#[:space:]]*KbdInteractiveAuthentication[[:space:]]+.*/KbdInteractiveAuthentication yes/' "$SSHD_CONFIG"
+			sudo sed -i -E 's/^[#[:space:]]*ChallengeResponseAuthentication[[:space:]]+.*/ChallengeResponseAuthentication yes/' "$SSHD_CONFIG"
+			# Append directives if they were absent entirely
+			sudo grep -qE '^[[:space:]]*PasswordAuthentication[[:space:]]+yes' "$SSHD_CONFIG" || \
+				echo "PasswordAuthentication yes" | sudo tee -a "$SSHD_CONFIG" >/dev/null
+			sudo grep -qE '^[[:space:]]*KbdInteractiveAuthentication[[:space:]]+yes' "$SSHD_CONFIG" || \
+				echo "KbdInteractiveAuthentication yes" | sudo tee -a "$SSHD_CONFIG" >/dev/null
+		fi
+		# Fix drop-in overrides (Ubuntu 22.04+ cloud-init, Fedora, etc.)
+		if sudo test -d /etc/ssh/sshd_config.d; then
+			while IFS= read -r f; do
+				[ -n "$f" ] || continue
+				sudo sed -i -E 's/^[#[:space:]]*PasswordAuthentication[[:space:]]+.*/PasswordAuthentication yes/' "$f"
+				sudo sed -i -E 's/^[#[:space:]]*KbdInteractiveAuthentication[[:space:]]+.*/KbdInteractiveAuthentication yes/' "$f"
+				sudo sed -i -E 's/^[#[:space:]]*ChallengeResponseAuthentication[[:space:]]+.*/ChallengeResponseAuthentication yes/' "$f"
+			done < <(sudo sh -c 'ls /etc/ssh/sshd_config.d/*.conf 2>/dev/null')
+		fi
+	fi
+
+	# Restart sshd so the change takes effect before the master runs ssh-copy-id.
+	if [ "$COMPOSTYPE" = "Linux" ]; then
+		case "$distro" in
+			alpine)
+				sudo rc-service sshd restart ;;
+			artix|gentoo|devuan|antix)
+				sudo rc-service sshd restart 2>/dev/null || true ;;
+			void)
+				sudo sv restart sshd 2>/dev/null || true ;;
+			slackware)
+				sudo /etc/rc.d/rc.sshd restart 2>/dev/null || true ;;
+			*)
+				sudo systemctl restart sshd 2>/dev/null || \
+					sudo systemctl restart ssh 2>/dev/null || true ;;
+		esac
+	elif [ "$COMPOSTYPE" = "macOS" ]; then
+		sudo launchctl kickstart -k system/com.openssh.sshd 2>/dev/null || true
+	fi
+}
+
 install_ssh_server
 start_ssh_server
+enable_password_auth
 
 # Resolve home directory for $username (cross-OS)
 if [ "$COMPOSTYPE" = "macOS" ]; then
@@ -492,16 +543,20 @@ if [ "$computer" = "Master" ]; then
 			break
 		fi
 
+		# Force password auth on the first push (the key isn't there yet), and
+		# auto-accept the worker's host key so the run is non-interactive aside
+		# from the password prompt.
+		SSH_OPTS="-o StrictHostKeyChecking=accept-new -o PubkeyAuthentication=no -o PreferredAuthentications=password,keyboard-interactive"
 		if command -v ssh-copy-id >/dev/null 2>&1; then
 			if [ "$COMPOSTYPE" = "Windows" ]; then
-				ssh-copy-id "$username@$IPADDRESS"
+				ssh-copy-id -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive "$username@$IPADDRESS"
 			else
-				sudo -H -u "$username" ssh-copy-id "$username@$IPADDRESS"
+				sudo -H -u "$username" ssh-copy-id -o StrictHostKeyChecking=accept-new -o PreferredAuthentications=password,keyboard-interactive "$username@$IPADDRESS"
 			fi
 		else
 			# Fallback for systems without ssh-copy-id (e.g. native Windows OpenSSH)
 			PUBKEY=$(sudo cat "${KEYFILE}.pub" 2>/dev/null || cat "${KEYFILE}.pub")
-			ssh "$username@$IPADDRESS" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$PUBKEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
+			ssh $SSH_OPTS "$username@$IPADDRESS" "mkdir -p ~/.ssh && chmod 700 ~/.ssh && echo '$PUBKEY' >> ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys"
 		fi
 	done
 fi
